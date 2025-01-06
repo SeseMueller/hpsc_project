@@ -3,11 +3,11 @@ use crate::soacontainer::SoAContainer;
 pub fn apply_lj_force<T,const N: usize>(container: &mut SoAContainer<T,N>) 
     where T: LjFloat + std::ops::AddAssign + std::ops::Sub<Output = T> + std::ops::Mul<Output = T> + std::ops::Add<Output = T> + std::ops::Div<Output = T> + Copy
 {
-    for i in 0..N { //TODO replace with par_iter
+    for i in 0..N {
         let mut fx: T = T::zero();
         let mut fy: T = T::zero();
         let mut fz: T = T::zero();
-        for j in 0..N {
+        for j in 0..N { // Maybe replace with par_iter??? The dependency between the particles makes it hard to parallelize
             if i == j {
                 continue;
             }
