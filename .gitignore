@@ -1,0 +1,6 @@
+/target
+.DS_Store
+/rendered_results
+/results
+output.mp4
+flamegraph.svg
