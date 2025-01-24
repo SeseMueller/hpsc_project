@@ -4,6 +4,7 @@ use crate::{
     soavector,
 };
 
+#[derive(Debug, Clone, Copy)]
 pub struct SoAContainer<T, const N: usize> {
     pub position: soavector::SoAVector<T, N>,
     pub velocity: soavector::SoAVector<T, N>,
@@ -19,26 +20,10 @@ where
     /// at random positions within the 10 cube.
     pub fn init_random_pos() -> Self {
         let mut container = SoAContainer {
-            position: soavector::SoAVector {
-                x: [T::zero(); N],
-                y: [T::zero(); N],
-                z: [T::zero(); N],
-            },
-            velocity: soavector::SoAVector {
-                x: [T::zero(); N],
-                y: [T::zero(); N],
-                z: [T::zero(); N],
-            },
-            old_force: soavector::SoAVector {
-                x: [T::zero(); N],
-                y: [T::zero(); N],
-                z: [T::zero(); N],
-            },
-            current_force: soavector::SoAVector {
-                x: [T::zero(); N],
-                y: [T::zero(); N],
-                z: [T::zero(); N],
-            },
+            position: soavector::SoAVector::new(),
+            velocity: soavector::SoAVector::new(),
+            old_force: soavector::SoAVector::new(),
+            current_force: soavector::SoAVector::new(),
         };
         for i in 0..N {
             container.position.x[i] = T::from_f64(rand::random::<f64>() * 10.0).unwrap();
@@ -55,26 +40,10 @@ where
         let lattice_size = lattice_size.cbrt().ceil() as usize;
 
         let mut container = SoAContainer {
-            position: soavector::SoAVector {
-                x: [T::zero(); N],
-                y: [T::zero(); N],
-                z: [T::zero(); N],
-            },
-            velocity: soavector::SoAVector {
-                x: [T::zero(); N],
-                y: [T::zero(); N],
-                z: [T::zero(); N],
-            },
-            old_force: soavector::SoAVector {
-                x: [T::zero(); N],
-                y: [T::zero(); N],
-                z: [T::zero(); N],
-            },
-            current_force: soavector::SoAVector {
-                x: [T::zero(); N],
-                y: [T::zero(); N],
-                z: [T::zero(); N],
-            },
+            position: soavector::SoAVector::new(),
+            velocity: soavector::SoAVector::new(),
+            old_force: soavector::SoAVector::new(),
+            current_force: soavector::SoAVector::new(),
         };
 
         let mut i = 0;
@@ -153,3 +122,4 @@ where
         }
     }
 }
+

@@ -12,6 +12,10 @@ mod force;
 
 mod boundary;
 
+mod linkedcell;
+
+mod soacontainerdyn;
+
 fn main() {
     const LOG_TIMESTEPS: usize = 50;
     const ITERATIONS: usize = 5000;
