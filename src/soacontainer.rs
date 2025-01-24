@@ -1,4 +1,8 @@
-use crate::{force::LjFloat, soavector};
+use crate::{
+    boundary::{self, Boundary, BoundaryCondition},
+    force::LjFloat,
+    soavector,
+};
 
 pub struct SoAContainer<T, const N: usize> {
     pub position: soavector::SoAVector<T, N>,
@@ -7,8 +11,11 @@ pub struct SoAContainer<T, const N: usize> {
     pub current_force: soavector::SoAVector<T, N>,
 }
 
-impl<T, const N: usize> SoAContainer<T, N> where T: LjFloat + std::string::ToString {
-    /// Initialize the SoAContainer with zero forces and velocities 
+impl<T, const N: usize> SoAContainer<T, N>
+where
+    T: LjFloat + std::string::ToString,
+{
+    /// Initialize the SoAContainer with zero forces and velocities
     /// at random positions within the 10 cube.
     pub fn init_random_pos() -> Self {
         let mut container = SoAContainer {
@@ -102,13 +109,14 @@ impl<T, const N: usize> SoAContainer<T, N> where T: LjFloat + std::string::ToStr
             let vx = container.velocity.x[i];
             let vy = container.velocity.y[i];
             let vz = container.velocity.z[i];
-            let v = (vx*vx + vy*vy + vz*vz).sqrt();
+            let v = (vx * vx + vy * vy + vz * vz).sqrt();
             wtr.write_record(&[
                 container.position.x[i].to_string(),
                 container.position.y[i].to_string(),
                 container.position.z[i].to_string(),
                 v.to_string(),
-            ]).unwrap();
+            ])
+            .unwrap();
         }
     }
 
@@ -120,5 +128,28 @@ impl<T, const N: usize> SoAContainer<T, N> where T: LjFloat + std::string::ToStr
             y: [T::zero(); N],
             z: [T::zero(); N],
         };
+    }
+}
+
+impl<T, const N: usize> Boundary<T> for SoAContainer<T, N>
+where
+    T: LjFloat,
+{
+    fn apply_boundary(&mut self, boundary: &BoundaryCondition<T>) {
+        let (velocities, positions) = match boundary.dimension {
+            boundary::Dimension::X => (&mut self.velocity.x, &mut self.position.x),
+            boundary::Dimension::Y => (&mut self.velocity.y, &mut self.position.y),
+            boundary::Dimension::Z => (&mut self.velocity.z, &mut self.position.z),
+        };
+
+        for i in 0..N {
+            if positions[i] < boundary.min {
+                positions[i] = boundary.min + (boundary.min - positions[i]); // Reflect: x = 2 * min - x
+                velocities[i] = -velocities[i]; // Reflect: v = -v
+            } else if positions[i] > boundary.max {
+                positions[i] = boundary.max + (boundary.max - positions[i]); // Reflect: x = 2 * max - x
+                velocities[i] = -velocities[i]; // Reflect: v = -v
+            }
+        }
     }
 }

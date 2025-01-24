@@ -10,6 +10,8 @@ mod integrator;
 
 mod force;
 
+mod boundary;
+
 fn main() {
     const LOG_TIMESTEPS: usize = 50;
     const ITERATIONS: usize = 5000;
@@ -19,7 +21,7 @@ fn main() {
 
     let integrator = integrator::VelocityStörmerVerlet::new(0.001);
     let mut cont = SoAContainer::<f64, 1000>::init_3d_lattice();
-    force::apply_lj_force(&mut cont); // Calculate initial forces
+    force::apply_lj_force_soa(&mut cont); // Calculate initial forces
 
     let mut log_step = 0;
     for i in 0..ITERATIONS {
@@ -33,7 +35,7 @@ fn main() {
         }
         integrator.update_position(&mut cont);
         cont.flush_forces();
-        force::apply_lj_force(&mut cont);
+        force::apply_lj_force_soa(&mut cont);
         integrator.update_velocity(&mut cont);
 
         print!("Step {}\r", i);
