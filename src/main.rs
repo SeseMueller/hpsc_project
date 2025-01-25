@@ -114,7 +114,7 @@ fn run_linked_cell_simulation() {
         cont.apply_boundaries();
 
         if i % REDIST_FREQ == 0 {
-            cont.redistribute_particles_slow();
+            cont.redistribute_particles();
         }
 
         print!("Step {}\r", i);

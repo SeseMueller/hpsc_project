@@ -142,6 +142,178 @@ where
                 }
             }
         }
+    }
+
+    /// Redistributes the particles in the LinkedCell to the correct cells.
+    /// First collects all particles in the cells that don't belong, then puts them back in the correct cells.
+    pub fn redistribute_particles(&mut self) {
+        let mut positions: SoAVectorDyn<T> = SoAVectorDyn::new(0);
+        let mut velocities: SoAVectorDyn<T> = SoAVectorDyn::new(0);
+        let mut old_forces: SoAVectorDyn<T> = SoAVectorDyn::new(0);
+        let mut current_forces: SoAVectorDyn<T> = SoAVectorDyn::new(0);
+
+        /// Helper function that takes in a SoAVectorDyn and an index and deletes the element at that index.
+        /// It is then copied to the end of the second vector
+        fn move_to_local<T>(
+            vec: &mut SoAVectorDyn<T>,
+            index: usize,
+            local_vec: &mut SoAVectorDyn<T>,
+        ) {
+            // It has am x,y,z component, so we need to remove all three components
+            let x = vec.x.swap_remove(index);
+            let y = vec.y.swap_remove(index);
+            let z = vec.z.swap_remove(index);
+
+            local_vec.x.push(x);
+            local_vec.y.push(y);
+            local_vec.z.push(z);
+        }
+
+        for i in 0..D0 {
+            let x_min = T::from_usize(i).unwrap() * self.cutoff;
+            let x_max = T::from_usize(i + 1).unwrap() * self.cutoff;
+            for j in 0..D1 {
+                let y_min = T::from_usize(j).unwrap() * self.cutoff;
+                let y_max = T::from_usize(j + 1).unwrap() * self.cutoff;
+                for k in 0..D2 {
+                    let z_min = T::from_usize(k).unwrap() * self.cutoff;
+                    let z_max = T::from_usize(k + 1).unwrap() * self.cutoff;
+
+                    // We know which cell we have and where the particle should be in space.
+                    // Iterate over the particles in the cell and check if they belong to the cell.
+
+                    let mut index = 0;
+                    while index < self.cells[i][j][k].position.x.len() {
+                        if self.cells[i][j][k].position.x[index] < x_min
+                            || self.cells[i][j][k].position.x[index] >= x_max
+                            || self.cells[i][j][k].position.y[index] < y_min
+                            || self.cells[i][j][k].position.y[index] >= y_max
+                            || self.cells[i][j][k].position.z[index] < z_min
+                            || self.cells[i][j][k].position.z[index] >= z_max
+                        {
+                            // The particle doesn't belong to this cell
+                            // Move it to the local vector
+                            move_to_local(&mut self.cells[i][j][k].position, index, &mut positions);
+                            move_to_local(
+                                &mut self.cells[i][j][k].velocity,
+                                index,
+                                &mut velocities,
+                            );
+                            move_to_local(
+                                &mut self.cells[i][j][k].old_force,
+                                index,
+                                &mut old_forces,
+                            );
+                            move_to_local(
+                                &mut self.cells[i][j][k].current_force,
+                                index,
+                                &mut current_forces,
+                            );
+                        } else {
+                            index += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Redistribute the particles to the correct cells
+        // Note that the data doesn't need to be cleared, as the content is overwritten.
+        for i in 0..D0 {
+            let x_min = T::from_usize(i).unwrap() * self.cutoff;
+            let x_max = T::from_usize(i + 1).unwrap() * self.cutoff;
+            for j in 0..D1 {
+                let y_min = T::from_usize(j).unwrap() * self.cutoff;
+                let y_max = T::from_usize(j + 1).unwrap() * self.cutoff;
+                for k in 0..D2 {
+                    let z_min = T::from_usize(k).unwrap() * self.cutoff;
+                    let z_max = T::from_usize(k + 1).unwrap() * self.cutoff;
+
+                    // Now we need to filter the particles that belong to this cell
+                    let mut new_positions = SoAVectorDyn::new(0);
+                    let mut new_velocities = SoAVectorDyn::new(0);
+                    let mut new_old_forces = SoAVectorDyn::new(0);
+                    let mut new_current_forces = SoAVectorDyn::new(0);
+                    for l in 0..positions.x.len() {
+                        if positions.x[l] >= x_min
+                            && positions.x[l] < x_max
+                            && positions.y[l] >= y_min
+                            && positions.y[l] < y_max
+                            && positions.z[l] >= z_min
+                            && positions.z[l] < z_max
+                        {
+                            new_positions.x.push(positions.x[l]);
+                            new_positions.y.push(positions.y[l]);
+                            new_positions.z.push(positions.z[l]);
+
+                            new_velocities.x.push(velocities.x[l]);
+                            new_velocities.y.push(velocities.y[l]);
+                            new_velocities.z.push(velocities.z[l]);
+
+                            new_old_forces.x.push(old_forces.x[l]);
+                            new_old_forces.y.push(old_forces.y[l]);
+                            new_old_forces.z.push(old_forces.z[l]);
+
+                            new_current_forces.x.push(current_forces.x[l]);
+                            new_current_forces.y.push(current_forces.y[l]);
+                            new_current_forces.z.push(current_forces.z[l]);
+                        }
+                    }
+
+                    self.cells[i][j][k]
+                        .position
+                        .x
+                        .extend(new_positions.x.iter());
+                    self.cells[i][j][k]
+                        .position
+                        .y
+                        .extend(new_positions.y.iter());
+                    self.cells[i][j][k]
+                        .position
+                        .z
+                        .extend(new_positions.z.iter());
+
+                    self.cells[i][j][k]
+                        .velocity
+                        .x
+                        .extend(new_velocities.x.iter());
+                    self.cells[i][j][k]
+                        .velocity
+                        .y
+                        .extend(new_velocities.y.iter());
+                    self.cells[i][j][k]
+                        .velocity
+                        .z
+                        .extend(new_velocities.z.iter());
+
+                    self.cells[i][j][k]
+                        .old_force
+                        .x
+                        .extend(new_old_forces.x.iter());
+                    self.cells[i][j][k]
+                        .old_force
+                        .y
+                        .extend(new_old_forces.y.iter());
+                    self.cells[i][j][k]
+                        .old_force
+                        .z
+                        .extend(new_old_forces.z.iter());
+
+                    self.cells[i][j][k]
+                        .current_force
+                        .x
+                        .extend(new_current_forces.x.iter());
+                    self.cells[i][j][k]
+                        .current_force
+                        .y
+                        .extend(new_current_forces.y.iter());
+                    self.cells[i][j][k]
+                        .current_force
+                        .z
+                        .extend(new_current_forces.z.iter());
+                }
+            }
+        }
 
         // Note that this implementation is not very efficient, as it requires a lot of copying.
         // A more efficient implementation would be to keep track of the indices of the particles in the cells.
@@ -223,7 +395,7 @@ where
             }
         }
 
-        self.redistribute_particles_slow();
+        self.redistribute_particles();
     }
 
     /// Flushes the forces of all particles in the LinkedCell.
@@ -240,19 +412,20 @@ where
     /// Saves the current state of the LinkedCell to a CSV file.
     /// The file will be named 'output_{index}.csv'
     /// in the 'results' directory.
-    /// 
-    /// Note: this function is quite slow, but I couldn't find a way to make it faster. 
+    ///
+    /// Note: this function is quite slow, but I couldn't find a way to make it faster.
     /// Even manually writing the data to a file was just as slow.
-    pub fn save_to_csv(&self, index: usize) 
-    where T: std::string::ToString
+    pub fn save_to_csv(&self, index: usize)
+    where
+        T: std::string::ToString,
     {
         let dir = std::path::Path::new("results");
         std::fs::create_dir_all(dir).unwrap();
         let path = dir.join(format!("output_{}.csv", index));
 
         let mut writer = csv::Writer::from_path(path).unwrap(); // It might look like this writer is slow, but I tried to implement it manually by writing the raw data to a file, and it was just as slow.
-        // Format: first line "x,y,z,v" then N lines of data
-        // (v is the magnitude of the velocity)
+                                                                // Format: first line "x,y,z,v" then N lines of data
+                                                                // (v is the magnitude of the velocity)
         writer.write_record(["x", "y", "z", "v"]).unwrap();
         for i in 0..D0 {
             for j in 0..D1 {
@@ -262,27 +435,26 @@ where
                         let vy = self.cells[i][j][k].velocity.y[l];
                         let vz = self.cells[i][j][k].velocity.z[l];
                         let v = (vx * vx + vy * vy + vz * vz).sqrt();
-                        writer.write_record(&[
-                            self.cells[i][j][k].position.x[l].to_string(),
-                            self.cells[i][j][k].position.y[l].to_string(),
-                            self.cells[i][j][k].position.z[l].to_string(),
-                            v.to_string(),
-                        ])
-                        .unwrap();
+                        writer
+                            .write_record(&[
+                                self.cells[i][j][k].position.x[l].to_string(),
+                                self.cells[i][j][k].position.y[l].to_string(),
+                                self.cells[i][j][k].position.z[l].to_string(),
+                                v.to_string(),
+                            ])
+                            .unwrap();
                     }
                 }
             }
         }
-
     }
-
 
     pub fn apply_boundaries(&mut self) {
         for boundary in &self.boundaries {
             for i in 0..D0 {
                 for j in 0..D1 {
                     for k in 0..D2 {
-                         self.cells[i][j][k].apply_boundary(boundary);
+                        self.cells[i][j][k].apply_boundary(boundary);
                     }
                 }
             }

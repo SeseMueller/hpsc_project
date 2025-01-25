@@ -96,8 +96,7 @@ pub fn apply_lj_force_2soa<T, const N: usize, const M: usize>(
         container_a.current_force.z[i] = fz;
 
         if newton_third_law {
-           // TODO: this was wrong, correct it
-            
+            // TODO: this was wrong, correct it
         }
     }
 }
@@ -165,27 +164,93 @@ pub fn apply_lj_force_2soa_dyn<T>(
 
     for i in 0..num_particles_a {
         for j in 0..num_particles_b {
-            let dx = container_a.position.x[i] - container_b.position.x[j];
-            let dy = container_a.position.y[i] - container_b.position.y[j];
-            let dz = container_a.position.z[i] - container_b.position.z[j];
+            unsafe {
+                // yes, I am aware. But the block needs to be unsafe because of the raw pointers
+                // and it can't be split up into smaller blocks because the results are needed later
 
-            // Lennard-Jones potential: 4 eps * (r^-12 - r^-6)
+                let dx = *container_a.position.x.get_unchecked(i)
+                    - *container_b.position.x.get_unchecked(j);
+                let dy = *container_a.position.y.get_unchecked(i)
+                    - *container_b.position.y.get_unchecked(j);
+                let dz = *container_a.position.z.get_unchecked(i)
+                    - *container_b.position.z.get_unchecked(j);
 
-            let r2inv = (dx * dx + dy * dy + dz * dz).recip();
-            let r6inv = r2inv * r2inv * r2inv;
-            let force_scalar = T::twenty_four() * r6inv * ((T::two() * r6inv) - T::one());
+                // Lennard-Jones potential: 4 eps * (r^-12 - r^-6)
 
-            // fx += force_scalar * dx;
-            // fy += force_scalar * dy;
-            // fz += force_scalar * dz;
-            container_a.current_force.x[i] += force_scalar * dx;
-            container_a.current_force.y[i] += force_scalar * dy;
-            container_a.current_force.z[i] += force_scalar * dz;
+                let r2inv = (dx * dx + dy * dy + dz * dz).recip();
+                let r6inv = r2inv * r2inv * r2inv;
+                let force_scalar = T::twenty_four() * r6inv * ((T::two() * r6inv) - T::one());
 
-            if newton_third_law {
-                container_b.current_force.x[j] -= force_scalar * dx;
-                container_b.current_force.y[j] -= force_scalar * dy;
-                container_b.current_force.z[j] -= force_scalar * dz;
+                // fx += force_scalar * dx;
+                // fy += force_scalar * dy;
+                // fz += force_scalar * dz;
+                *container_a.current_force.x.get_unchecked_mut(i) += force_scalar * dx;
+                *container_a.current_force.y.get_unchecked_mut(i) += force_scalar * dy;
+                *container_a.current_force.z.get_unchecked_mut(i) += force_scalar * dz;
+
+                if newton_third_law {
+                    *container_b.current_force.x.get_unchecked_mut(j) -= force_scalar * dx;
+                    *container_b.current_force.y.get_unchecked_mut(j) -= force_scalar * dy;
+                    *container_b.current_force.z.get_unchecked_mut(j) -= force_scalar * dz;
+                }
+            }
+        }
+    }
+}
+
+/// Applies the Lennard-Jones force to the particles of two soa containers by only using the necessary arrays.
+#[inline(never)] // To be able to see the function in the profiler
+pub fn apply_lj_force_arrays<T>(
+    // container_a: &mut crate::soacontainerdyn::SoAContainerDyn<T>,
+    // container_b: &mut crate::soacontainerdyn::SoAContainerDyn<T>,
+    position_a_x: &[T],
+    position_a_y: &[T],
+    position_a_z: &[T],
+    position_b_x: &[T],
+    position_b_y: &[T],
+    position_b_z: &[T],
+    current_force_a_x: &mut [T],
+    current_force_a_y: &mut [T],
+    current_force_a_z: &mut [T],
+    current_force_b_x: &mut [T],
+    current_force_b_y: &mut [T],
+    current_force_b_z: &mut [T],
+) where
+    T: LjFloat
+        + std::ops::AddAssign
+        + std::ops::SubAssign
+        + std::ops::Sub<Output = T>
+        + std::ops::Mul<Output = T>
+        + std::ops::Add<Output = T>
+        + std::ops::Div<Output = T>
+        + Copy,
+{
+    let num_particles_a = position_a_x.len();
+    let num_particles_b = position_b_x.len();
+
+    for i in 0..num_particles_a {
+        for j in 0..num_particles_b {
+            unsafe {
+                // yes, I am aware. But the block needs to be unsafe because of the raw pointers
+                // and it can't be split up into smaller blocks because the results are needed later
+
+                let dx = *position_a_x.get_unchecked(i) - *position_b_x.get_unchecked(j);
+                let dy = *position_a_y.get_unchecked(i) - *position_b_y.get_unchecked(j);
+                let dz = *position_a_z.get_unchecked(i) - *position_b_z.get_unchecked(j);
+
+                // Lennard-Jones potential: 4 eps * (r^-12 - r^-6)
+
+                let r2inv = (dx * dx + dy * dy + dz * dz).recip();
+                let r6inv = r2inv * r2inv * r2inv;
+                let force_scalar = T::twenty_four() * r6inv * ((T::two() * r6inv) - T::one());
+
+                *current_force_a_x.get_unchecked_mut(i) += force_scalar * dx;
+                *current_force_a_y.get_unchecked_mut(i) += force_scalar * dy;
+                *current_force_a_z.get_unchecked_mut(i) += force_scalar * dz;
+
+                *current_force_b_x.get_unchecked_mut(j) -= force_scalar * dx;
+                *current_force_b_y.get_unchecked_mut(j) -= force_scalar * dy;
+                *current_force_b_z.get_unchecked_mut(j) -= force_scalar * dz;
             }
         }
     }
@@ -209,17 +274,37 @@ pub fn apply_lj_force_2soa_dyn_index<T, const D0: usize, const D1: usize, const 
         + std::ops::Div<Output = T>
         + Copy,
 {
-    let num_particles_a = cell.cells[container_a_index.0][container_a_index.1][container_a_index.2].position.x.len();
-    let num_particles_b = cell.cells[container_b_index.0][container_b_index.1][container_b_index.2].position.x.len();
+    let num_particles_a = cell.cells[container_a_index.0][container_a_index.1][container_a_index.2]
+        .position
+        .x
+        .len();
+    let num_particles_b = cell.cells[container_b_index.0][container_b_index.1][container_b_index.2]
+        .position
+        .x
+        .len();
 
-    
     // First set the forces to zero, they will be accumulated in the next loop
 
     for i in 0..num_particles_a {
         for j in 0..num_particles_b {
-            let dx = cell.cells[container_a_index.0][container_a_index.1][container_a_index.2].position.x[i] - cell.cells[container_b_index.0][container_b_index.1][container_b_index.2].position.x[j];
-            let dy = cell.cells[container_a_index.0][container_a_index.1][container_a_index.2].position.y[i] - cell.cells[container_b_index.0][container_b_index.1][container_b_index.2].position.y[j];
-            let dz = cell.cells[container_a_index.0][container_a_index.1][container_a_index.2].position.z[i] - cell.cells[container_b_index.0][container_b_index.1][container_b_index.2].position.z[j];
+            let dx = cell.cells[container_a_index.0][container_a_index.1][container_a_index.2]
+                .position
+                .x[i]
+                - cell.cells[container_b_index.0][container_b_index.1][container_b_index.2]
+                    .position
+                    .x[j];
+            let dy = cell.cells[container_a_index.0][container_a_index.1][container_a_index.2]
+                .position
+                .y[i]
+                - cell.cells[container_b_index.0][container_b_index.1][container_b_index.2]
+                    .position
+                    .y[j];
+            let dz = cell.cells[container_a_index.0][container_a_index.1][container_a_index.2]
+                .position
+                .z[i]
+                - cell.cells[container_b_index.0][container_b_index.1][container_b_index.2]
+                    .position
+                    .z[j];
 
             // Lennard-Jones potential: 4 eps * (r^-12 - r^-6)
 
@@ -230,23 +315,33 @@ pub fn apply_lj_force_2soa_dyn_index<T, const D0: usize, const D1: usize, const 
             // fx += force_scalar * dx;
             // fy += force_scalar * dy;
             // fz += force_scalar * dz;
-            cell.cells[container_a_index.0][container_a_index.1][container_a_index.2].current_force.x[i] += force_scalar * dx;
-            cell.cells[container_a_index.0][container_a_index.1][container_a_index.2].current_force.y[i] += force_scalar * dy;
-            cell.cells[container_a_index.0][container_a_index.1][container_a_index.2].current_force.z[i] += force_scalar * dz;
+            cell.cells[container_a_index.0][container_a_index.1][container_a_index.2]
+                .current_force
+                .x[i] += force_scalar * dx;
+            cell.cells[container_a_index.0][container_a_index.1][container_a_index.2]
+                .current_force
+                .y[i] += force_scalar * dy;
+            cell.cells[container_a_index.0][container_a_index.1][container_a_index.2]
+                .current_force
+                .z[i] += force_scalar * dz;
 
             if newton_third_law {
-                cell.cells[container_b_index.0][container_b_index.1][container_b_index.2].current_force.x[j] -= force_scalar * dx;
-                cell.cells[container_b_index.0][container_b_index.1][container_b_index.2].current_force.y[j] -= force_scalar * dy;
-                cell.cells[container_b_index.0][container_b_index.1][container_b_index.2].current_force.z[j] -= force_scalar * dz;
+                cell.cells[container_b_index.0][container_b_index.1][container_b_index.2]
+                    .current_force
+                    .x[j] -= force_scalar * dx;
+                cell.cells[container_b_index.0][container_b_index.1][container_b_index.2]
+                    .current_force
+                    .y[j] -= force_scalar * dy;
+                cell.cells[container_b_index.0][container_b_index.1][container_b_index.2]
+                    .current_force
+                    .z[j] -= force_scalar * dz;
             }
         }
     }
 }
 
 /// Applies the Lennard-Jones force to the particles in two soa containers of the linked cell.
-/// This specialization is needed because the pointer aliasing rule forbids 
-
-
+/// This specialization is needed because the pointer aliasing rule forbids
 
 /// Applies the Lennard-Jones force to the particles in the linked cell.
 pub fn apply_lj_force_linked_cell<T, const D0: usize, const D1: usize, const D2: usize>(
@@ -295,18 +390,16 @@ pub fn apply_lj_force_linked_cell<T, const D0: usize, const D1: usize, const D2:
                         continue; // Skip if we are out of bounds
                     }
 
-                    // dbg!(i, j, k, inner_0, inner_1, inner_2);
-
                     // Passing the same array twive with mut would violate the pointer aliasing rule,
                     // so we need to use raw pointers
 
-                    let container_a = &mut cell.cells[i][j][k] as *mut _;
-                    let container_b = &mut cell.cells[inner_0][inner_1][inner_2] as *mut _;
-                    apply_lj_force_2soa_dyn(
-                        unsafe { &mut *container_a }, // Safety: we know that the pointer is valid and that
-                        unsafe { &mut *container_b }, // this pointer is pointing somewhere else in the grid
-                        true,
-                    );
+                    // let container_a = &mut cell.cells[i][j][k] as *mut _;
+                    // let container_b = &mut cell.cells[inner_0][inner_1][inner_2] as *mut _;
+                    // apply_lj_force_2soa_dyn(
+                    //     unsafe { &mut *container_a }, // Safety: we know that the pointer is valid and that
+                    //     unsafe { &mut *container_b }, // this pointer is pointing somewhere else in the grid
+                    //     true,
+                    // );
 
                     // There was some bug there, so I'm trying to do it manually
                     // apply_lj_force_2soa_dyn_index(
@@ -317,6 +410,40 @@ pub fn apply_lj_force_linked_cell<T, const D0: usize, const D1: usize, const D2:
                     // );
                     // Nope, both give the same result
                     // Found the error: the single container version overwrote the forces of the other container (= instead of +=)
+
+                    // In an attempt to be faster, I removed unnecessary indirection, but the setup is a bit longer
+                    // Basically, the force interactions are an operation between twelve arrays, so we can just pass the arrays
+                    // We still need unsafe though.
+                    let positions_a_x = &cell.cells[i][j][k].position.x;
+                    let positions_a_y = &cell.cells[i][j][k].position.y;
+                    let positions_a_z = &cell.cells[i][j][k].position.z;
+                    let positions_b_x = &cell.cells[inner_0][inner_1][inner_2].position.x;
+                    let positions_b_y = &cell.cells[inner_0][inner_1][inner_2].position.y;
+                    let positions_b_z = &cell.cells[inner_0][inner_1][inner_2].position.z;
+                    let forces_a_x = &mut *cell.cells[i][j][k].current_force.x as *mut _;
+                    let forces_a_y = &mut *cell.cells[i][j][k].current_force.y as *mut _;
+                    let forces_a_z = &mut *cell.cells[i][j][k].current_force.z as *mut _;
+                    let forces_b_x =
+                        &mut *cell.cells[inner_0][inner_1][inner_2].current_force.x as *mut _;
+                    let forces_b_y =
+                        &mut *cell.cells[inner_0][inner_1][inner_2].current_force.y as *mut _;
+                    let forces_b_z =
+                        &mut *cell.cells[inner_0][inner_1][inner_2].current_force.z as *mut _;
+
+                    apply_lj_force_arrays(
+                        positions_a_x,
+                        positions_a_y,
+                        positions_a_z,
+                        positions_b_x,
+                        positions_b_y,
+                        positions_b_z,
+                        unsafe { &mut *forces_a_x },
+                        unsafe { &mut *forces_a_y },
+                        unsafe { &mut *forces_a_z },
+                        unsafe { &mut *forces_b_x },
+                        unsafe { &mut *forces_b_y },
+                        unsafe { &mut *forces_b_z },
+                    );
                 }
 
                 // Now we need to apply the force to the particles in the cell itself
