@@ -9,6 +9,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 
 [[package]]
+name = "boxarray"
+version = "1.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96127e3b230ed9d99c67829271027914e8bfdd93b246cf569a4c0e69e26c5825"
+
+[[package]]
 name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -87,6 +93,7 @@ dependencies = [
 name = "hpsc_project"
 version = "0.1.0"
 dependencies = [
+ "boxarray",
  "csv",
  "num",
  "rand",

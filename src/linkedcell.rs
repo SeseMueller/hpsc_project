@@ -1,10 +1,12 @@
-use crate::{soacontainerdyn::SoAContainerDyn, soavector::SoAVectorDyn};
+use boxarray::boxarray_;
+
+use crate::{boundary::Boundary, soacontainerdyn::SoAContainerDyn, soavector::SoAVectorDyn};
 
 /// Simple implementation of a linked cell utilizing SoAcontainer under the hood.
 /// It has a fixed number of cells in each dimension, and a cutoff distance, which is used to determine the size of the cells.
 pub struct LinkedCell<T, const D0: usize, const D1: usize, const D2: usize> {
     pub cutoff: T,
-    pub cells: [[[SoAContainerDyn<T>; D2]; D1]; D0], // Hell yeah, 3D array of const generics!
+    pub cells: Box<[[[SoAContainerDyn<T>; D2]; D1]; D0]>, // Hell yeah, 3D array of const generics!
     pub boundaries: Vec<crate::boundary::BoundaryCondition<T>>,
 }
 
@@ -43,9 +45,8 @@ where
 
     /// Initialize an empty LinkedCell with the given cutoff distance.
     pub fn new(cutoff: T) -> Self {
-        let cells: [[[SoAContainerDyn<T>; D2]; D1]; D0] = core::array::from_fn(|_| {
-            core::array::from_fn(|_| core::array::from_fn(|_| SoAContainerDyn::new(0)))
-        }); // This is a bit more readable, but still not perfect. Also pretty cursed.
+        let constructor = |_| SoAContainerDyn::<T>::new(0);
+        let cells: Box<[[[SoAContainerDyn<T>; D2]; D1]; D0]> = boxarray_(constructor); // This is a bit more readable, but still not perfect. Also pretty cursed.
         LinkedCell {
             cutoff,
             cells,
@@ -132,7 +133,6 @@ where
                             new_current_forces.z.push(current_forces.z[l]);
                         }
                     }
-                    
 
                     self.cells[i][j][k].position = new_positions;
                     self.cells[i][j][k].velocity = new_velocities;
@@ -147,27 +147,31 @@ where
         // A more efficient implementation would be to keep track of the indices of the particles in the cells.
     }
 
-
     /// Adds particles to the LinkedCell in a grid of given size.
     /// Also redistributes the particles to the correct cells.
-    pub fn add_particles(&mut self, grid_size: usize) {
-        
-        // The different min and max values for the grid        
+    pub fn add_particle_grid(&mut self, grid_size: usize, grid_distance: T) {
+        // The different min and max values for the grid
         let x_min = T::zero() + (self.cutoff / T::two());
-        let x_max = T::from_usize(D0).unwrap() * self.cutoff + (self.cutoff / T::two());
+        let x_max = T::from(grid_size).unwrap() * grid_distance + (self.cutoff / T::two());
 
         let y_min = T::zero() + (self.cutoff / T::two());
-        let y_max = T::from_usize(D1).unwrap() * self.cutoff + (self.cutoff / T::two());
+        let y_max = T::from(grid_size).unwrap() * grid_distance + (self.cutoff / T::two());
 
         let z_min = T::zero() + (self.cutoff / T::two());
-        let z_max = T::from_usize(D2).unwrap() * self.cutoff + (self.cutoff / T::two());
+        let z_max = T::from(grid_size).unwrap() * grid_distance + (self.cutoff / T::two());
 
         for i in 0..grid_size {
             for j in 0..grid_size {
                 for k in 0..grid_size {
-                    let x = x_min + (x_max - x_min) * T::from_usize(i).unwrap() / T::from_usize(grid_size).unwrap();
-                    let y = y_min + (y_max - y_min) * T::from_usize(j).unwrap() / T::from_usize(grid_size).unwrap();
-                    let z = z_min + (z_max - z_min) * T::from_usize(k).unwrap() / T::from_usize(grid_size).unwrap();
+                    let x = x_min
+                        + (x_max - x_min) * T::from_usize(i).unwrap()
+                            / T::from_usize(grid_size).unwrap();
+                    let y = y_min
+                        + (y_max - y_min) * T::from_usize(j).unwrap()
+                            / T::from_usize(grid_size).unwrap();
+                    let z = z_min
+                        + (z_max - z_min) * T::from_usize(k).unwrap()
+                            / T::from_usize(grid_size).unwrap();
 
                     let cell_x = (x / self.cutoff).to_usize().unwrap().min(D0 - 1);
                     let cell_y = (y / self.cutoff).to_usize().unwrap().min(D1 - 1);
@@ -177,22 +181,111 @@ where
                     self.cells[cell_x][cell_y][cell_z].position.y.push(y);
                     self.cells[cell_x][cell_y][cell_z].position.z.push(z);
 
-                    self.cells[cell_x][cell_y][cell_z].velocity.x.push(T::zero());
-                    self.cells[cell_x][cell_y][cell_z].velocity.y.push(T::zero());
-                    self.cells[cell_x][cell_y][cell_z].velocity.z.push(T::zero());
+                    self.cells[cell_x][cell_y][cell_z]
+                        .velocity
+                        .x
+                        .push(T::zero());
+                    self.cells[cell_x][cell_y][cell_z]
+                        .velocity
+                        .y
+                        .push(T::zero());
+                    self.cells[cell_x][cell_y][cell_z]
+                        .velocity
+                        .z
+                        .push(T::zero());
 
-                    self.cells[cell_x][cell_y][cell_z].old_force.x.push(T::zero());
-                    self.cells[cell_x][cell_y][cell_z].old_force.y.push(T::zero());
-                    self.cells[cell_x][cell_y][cell_z].old_force.z.push(T::zero());
+                    self.cells[cell_x][cell_y][cell_z]
+                        .old_force
+                        .x
+                        .push(T::zero());
+                    self.cells[cell_x][cell_y][cell_z]
+                        .old_force
+                        .y
+                        .push(T::zero());
+                    self.cells[cell_x][cell_y][cell_z]
+                        .old_force
+                        .z
+                        .push(T::zero());
 
-                    self.cells[cell_x][cell_y][cell_z].current_force.x.push(T::zero());
-                    self.cells[cell_x][cell_y][cell_z].current_force.y.push(T::zero());
-                    self.cells[cell_x][cell_y][cell_z].current_force.z.push(T::zero());
+                    self.cells[cell_x][cell_y][cell_z]
+                        .current_force
+                        .x
+                        .push(T::zero());
+                    self.cells[cell_x][cell_y][cell_z]
+                        .current_force
+                        .y
+                        .push(T::zero());
+                    self.cells[cell_x][cell_y][cell_z]
+                        .current_force
+                        .z
+                        .push(T::zero());
                 }
             }
         }
 
         self.redistribute_particles_slow();
+    }
 
+    /// Flushes the forces of all particles in the LinkedCell.
+    pub fn flush_forces(&mut self) {
+        for i in 0..D0 {
+            for j in 0..D1 {
+                for k in 0..D2 {
+                    self.cells[i][j][k].flush_forces();
+                }
+            }
+        }
+    }
+
+    /// Saves the current state of the LinkedCell to a CSV file.
+    /// The file will be named 'output_{index}.csv'
+    /// in the 'results' directory.
+    /// 
+    /// Note: this function is quite slow, but I couldn't find a way to make it faster. 
+    /// Even manually writing the data to a file was just as slow.
+    pub fn save_to_csv(&self, index: usize) 
+    where T: std::string::ToString
+    {
+        let dir = std::path::Path::new("results");
+        std::fs::create_dir_all(dir).unwrap();
+        let path = dir.join(format!("output_{}.csv", index));
+
+        let mut writer = csv::Writer::from_path(path).unwrap(); // It might look like this writer is slow, but I tried to implement it manually by writing the raw data to a file, and it was just as slow.
+        // Format: first line "x,y,z,v" then N lines of data
+        // (v is the magnitude of the velocity)
+        writer.write_record(["x", "y", "z", "v"]).unwrap();
+        for i in 0..D0 {
+            for j in 0..D1 {
+                for k in 0..D2 {
+                    for l in 0..self.cells[i][j][k].position.x.len() {
+                        let vx = self.cells[i][j][k].velocity.x[l];
+                        let vy = self.cells[i][j][k].velocity.y[l];
+                        let vz = self.cells[i][j][k].velocity.z[l];
+                        let v = (vx * vx + vy * vy + vz * vz).sqrt();
+                        writer.write_record(&[
+                            self.cells[i][j][k].position.x[l].to_string(),
+                            self.cells[i][j][k].position.y[l].to_string(),
+                            self.cells[i][j][k].position.z[l].to_string(),
+                            v.to_string(),
+                        ])
+                        .unwrap();
+                    }
+                }
+            }
+        }
+
+    }
+
+
+    pub fn apply_boundaries(&mut self) {
+        for boundary in &self.boundaries {
+            for i in 0..D0 {
+                for j in 0..D1 {
+                    for k in 0..D2 {
+                         self.cells[i][j][k].apply_boundary(boundary);
+                    }
+                }
+            }
+        }
     }
 }
