@@ -18,6 +18,9 @@ where
 {
     /// Initialize the SoAContainer with zero forces and velocities
     /// at random positions within the 10 cube.
+    /// Deprecated in favor of `init_3d_lattice` and the "add_particle_grid" method on the linked cell.
+    /// Note that this method tends to prouduce wildly unstable simulations as the particles are too close to each other.
+    #[allow(dead_code)]
     pub fn init_random_pos() -> Self {
         let mut container = SoAContainer {
             position: soavector::SoAVector::new(),

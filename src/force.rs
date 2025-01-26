@@ -18,6 +18,7 @@ where
 }
 
 /// Applies the Lennard-Jones force to the particles in the container.
+#[allow(dead_code)]
 pub fn apply_lj_force_soa<T, const N: usize>(container: &mut SoAContainer<T, N>)
 where
     T: LjFloat
@@ -59,6 +60,7 @@ where
 
 /// Applies the Lennard-Jones force to the particles of both containers, but not within the same container.
 /// If `newton_third_law` is false, the force is only applied to `container_a`.
+#[allow(dead_code)]
 pub fn apply_lj_force_2soa<T, const N: usize, const M: usize>(
     container_a: &mut SoAContainer<T, N>,
     container_b: &mut SoAContainer<T, M>,
@@ -145,6 +147,7 @@ where
 /// Applies the Lennard-Jones force to the particles of both dynamic soa containers, but not within the same container.
 /// If `newton_third_law` is false, the force is only applied to `container_a`.
 #[inline(never)] // To be able to see the function in the profiler
+#[allow(dead_code)]
 pub fn apply_lj_force_2soa_dyn<T>(
     container_a: &mut crate::soacontainerdyn::SoAContainerDyn<T>,
     container_b: &mut crate::soacontainerdyn::SoAContainerDyn<T>,
@@ -200,6 +203,7 @@ pub fn apply_lj_force_2soa_dyn<T>(
 
 /// Applies the Lennard-Jones force to the particles of two soa containers by only using the necessary arrays.
 #[inline(never)] // To be able to see the function in the profiler
+#[allow(clippy::too_many_arguments)] // This is necessary because of the arrays
 pub fn apply_lj_force_arrays<T>(
     // container_a: &mut crate::soacontainerdyn::SoAContainerDyn<T>,
     // container_b: &mut crate::soacontainerdyn::SoAContainerDyn<T>,
@@ -259,6 +263,8 @@ pub fn apply_lj_force_arrays<T>(
 /// Applies the Lennard-Jones force to the particles of both dynamic soa containers, but not within the same container.
 /// If `newton_third_law` is false, the force is only applied to `container_a`.
 /// Recieves the indexes of the containers to apply the force to.
+/// Mainly for comparing to the "apply_lj_forces_linked_cell" function as it uses a different approach.
+#[allow(dead_code)]
 pub fn apply_lj_force_2soa_dyn_index<T, const D0: usize, const D1: usize, const D2: usize>(
     cell: &mut LinkedCell<T, D0, D1, D2>,
     container_a_index: (usize, usize, usize),

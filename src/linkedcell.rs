@@ -1,4 +1,5 @@
 use boxarray::boxarray_;
+use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
 use crate::{boundary::Boundary, soacontainerdyn::SoAContainerDyn, soavector::SoAVectorDyn};
 
@@ -7,7 +8,7 @@ use crate::{boundary::Boundary, soacontainerdyn::SoAContainerDyn, soavector::SoA
 pub struct LinkedCell<T, const D0: usize, const D1: usize, const D2: usize> {
     pub cutoff: T,
     pub cells: Box<[[[SoAContainerDyn<T>; D2]; D1]; D0]>, // Hell yeah, 3D array of const generics!
-    pub boundaries: Vec<crate::boundary::BoundaryCondition<T>>,
+    pub boundaries: Vec<crate::boundary::BoundaryCondition<T>>, // The boundaries of the simulation
 }
 
 impl<T, const D0: usize, const D1: usize, const D2: usize> LinkedCell<T, D0, D1, D2>
@@ -45,8 +46,9 @@ where
 
     /// Initialize an empty LinkedCell with the given cutoff distance.
     pub fn new(cutoff: T) -> Self {
+        // Uses a library to simply contruct the 3D array on the heap; if it was done manually, the stack might overflow with large simulations
         let constructor = |_| SoAContainerDyn::<T>::new(0);
-        let cells: Box<[[[SoAContainerDyn<T>; D2]; D1]; D0]> = boxarray_(constructor); // This is a bit more readable, but still not perfect. Also pretty cursed.
+        let cells: Box<[[[SoAContainerDyn<T>; D2]; D1]; D0]> = boxarray_(constructor); 
         LinkedCell {
             cutoff,
             cells,
@@ -56,6 +58,8 @@ where
 
     /// Naively redistributes the particles in the LinkedCell to the correct cells.
     /// First collects all particles in the cells, then puts them back in the correct cells.
+    /// This turned out to be far too slow for large simulations.
+    #[allow(dead_code)]
     pub fn redistribute_particles_slow(&mut self) {
         let mut positions: SoAVectorDyn<T> = SoAVectorDyn::new(0);
         let mut velocities: SoAVectorDyn<T> = SoAVectorDyn::new(0);
@@ -160,7 +164,7 @@ where
             local_vec: &mut SoAVectorDyn<T>,
         ) {
             // It has am x,y,z component, so we need to remove all three components
-            let x = vec.x.swap_remove(index);
+            let x = vec.x.swap_remove(index); // Rust just has a swap_remove function, which is very convenient
             let y = vec.y.swap_remove(index);
             let z = vec.z.swap_remove(index);
 
@@ -169,8 +173,9 @@ where
             local_vec.z.push(z);
         }
 
+        // Collect all particles in the cells that don't belong
         for i in 0..D0 {
-            let x_min = T::from_usize(i).unwrap() * self.cutoff;
+            let x_min = T::from_usize(i).unwrap() * self.cutoff; // The bounding box the container should contain the particles in
             let x_max = T::from_usize(i + 1).unwrap() * self.cutoff;
             for j in 0..D1 {
                 let y_min = T::from_usize(j).unwrap() * self.cutoff;
@@ -192,7 +197,7 @@ where
                             || self.cells[i][j][k].position.z[index] >= z_max
                         {
                             // The particle doesn't belong to this cell
-                            // Move it to the local vector
+                            // Move it to the local vectors
                             move_to_local(&mut self.cells[i][j][k].position, index, &mut positions);
                             move_to_local(
                                 &mut self.cells[i][j][k].velocity,
@@ -212,13 +217,16 @@ where
                         } else {
                             index += 1;
                         }
+                        // Ironically, due to the way the particles lie in memory, this redistibution is actually pretty slow because it needs to move individual entries
+                        // from 4 batched arrays to 4 batched temporary arrays (and back). If the particle was one 12x8 byte struct, this would be much faster with memcopy.
                     }
                 }
             }
         }
 
         // Redistribute the particles to the correct cells
-        // Note that the data doesn't need to be cleared, as the content is overwritten.
+        // Note that this loop is also not easily parallelizable, as we need mutable access to the cells.
+        // Rayon iter mut magic might get it done.
         for i in 0..D0 {
             let x_min = T::from_usize(i).unwrap() * self.cutoff;
             let x_max = T::from_usize(i + 1).unwrap() * self.cutoff;
@@ -242,7 +250,7 @@ where
                             && positions.z[l] >= z_min
                             && positions.z[l] < z_max
                         {
-                            new_positions.x.push(positions.x[l]);
+                            new_positions.x.push(positions.x[l]); // Insert the particle into the temporary arrays
                             new_positions.y.push(positions.y[l]);
                             new_positions.z.push(positions.z[l]);
 
@@ -260,7 +268,7 @@ where
                         }
                     }
 
-                    self.cells[i][j][k]
+                    self.cells[i][j][k] // Insert the temporary arrays into the cell
                         .position
                         .x
                         .extend(new_positions.x.iter());
@@ -316,14 +324,14 @@ where
         }
 
         // Note that this implementation is not very efficient, as it requires a lot of copying.
-        // A more efficient implementation would be to keep track of the indices of the particles in the cells.
+        // A more efficient implementation would require the underlying data structure to keep track of the indices of the particles in the cells.
     }
 
     /// Adds particles to the LinkedCell in a grid of given size.
     /// Also redistributes the particles to the correct cells.
     pub fn add_particle_grid(&mut self, grid_size: usize, grid_distance: T) {
         // The different min and max values for the grid
-        let x_min = T::zero() + (self.cutoff / T::two());
+        let x_min = T::zero() + (self.cutoff / T::two()); // Offset to ensure that no particles are lost on the edge
         let x_max = T::from(grid_size).unwrap() * grid_distance + (self.cutoff / T::two());
 
         let y_min = T::zero() + (self.cutoff / T::two());
@@ -332,7 +340,7 @@ where
         let z_min = T::zero() + (self.cutoff / T::two());
         let z_max = T::from(grid_size).unwrap() * grid_distance + (self.cutoff / T::two());
 
-        for i in 0..grid_size {
+        for i in 0..grid_size { // Loop over the grid entries
             for j in 0..grid_size {
                 for k in 0..grid_size {
                     let x = x_min
@@ -345,11 +353,11 @@ where
                         + (z_max - z_min) * T::from_usize(k).unwrap()
                             / T::from_usize(grid_size).unwrap();
 
-                    let cell_x = (x / self.cutoff).to_usize().unwrap().min(D0 - 1);
+                    let cell_x = (x / self.cutoff).to_usize().unwrap().min(D0 - 1); // Calculate the coordinates of the cell this particle belongs to
                     let cell_y = (y / self.cutoff).to_usize().unwrap().min(D1 - 1);
                     let cell_z = (z / self.cutoff).to_usize().unwrap().min(D2 - 1);
 
-                    self.cells[cell_x][cell_y][cell_z].position.x.push(x);
+                    self.cells[cell_x][cell_y][cell_z].position.x.push(x); // Add the particle to the cell
                     self.cells[cell_x][cell_y][cell_z].position.y.push(y);
                     self.cells[cell_x][cell_y][cell_z].position.z.push(z);
 
@@ -399,6 +407,8 @@ where
     }
 
     /// Flushes the forces of all particles in the LinkedCell.
+    /// Deprecated in favour of the parallel version.
+    #[allow(dead_code)]
     pub fn flush_forces(&mut self) {
         for i in 0..D0 {
             for j in 0..D1 {
@@ -409,11 +419,24 @@ where
         }
     }
 
+    /// Flushes the forces of all particles in the LinkedCell in a parallel manner.
+    pub fn flush_forces_par(&mut self) 
+    where T: Send + Sync
+    {
+        self.cells.par_iter_mut().for_each(|plane| {
+            for j in 0..D1 {
+                for k in 0..D2 {
+                    plane[j][k].flush_forces();
+                }
+            }
+        });
+    }
+
     /// Saves the current state of the LinkedCell to a CSV file.
     /// The file will be named 'output_{index}.csv'
     /// in the 'results' directory.
     ///
-    /// Note: this function is quite slow, but I couldn't find a way to make it faster.
+    /// Note: this function is somewhat slow, but I couldn't find a way to make it faster.
     /// Even manually writing the data to a file was just as slow.
     pub fn save_to_csv(&self, index: usize)
     where
@@ -449,6 +472,7 @@ where
         }
     }
 
+    /// Applies all boundaries this LinkedCells has to all its particles.
     pub fn apply_boundaries(&mut self) {
         for boundary in &self.boundaries {
             for i in 0..D0 {

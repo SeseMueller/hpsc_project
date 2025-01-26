@@ -1,12 +1,16 @@
-use crate::{boundary::{self, Boundary, BoundaryCondition}, force::LjFloat, soavector::SoAVectorDyn};
+use crate::{
+    boundary::{self, Boundary, BoundaryCondition},
+    force::LjFloat,
+    soavector::SoAVectorDyn,
+};
 
 /// An SoA container that can dynamically grow and shrink.
 /// Functionally equivalent to `SoAContainer`, but with a different implementation
 /// allowing for dynamic resizing, useful for linked cell implementations.
 /// Note that because of the lack of a proper effect system in Rust,
 /// it is not possible to declare a trait over the static and dynamic SoA containers
-/// that would allow for the same code to be used for both while still having the 
-/// performance benefits of the static version. 
+/// that would allow for the same code to be used for both while still having the
+/// performance benefits of the static version.
 /// A way to do it would be to put the accesses to the field behind a function call
 /// which could then be manipulated and read through a trait over both SoAVectors.
 /// However, Static dispatch could then not optimize the code as well as it could with
@@ -40,6 +44,7 @@ where
     }
 
     /// Distributes the particles in a 3D lattice.
+    #[allow(dead_code)]
     pub fn init_3d_lattice(num_particles: usize) -> Self {
         // The size of the lattice such that the particles are evenly distributed
         let lattice_size = num_particles as f64;
@@ -89,11 +94,23 @@ where
 
         for i in 0..positions.len() {
             if positions[i] < boundary.min {
-                positions[i] = boundary.min + (boundary.min - positions[i]); // Reflect: x = 2 * min - x
-                velocities[i] = -velocities[i]; // Reflect: v = -v
+                // For double tunneling or more, we take the modulus of the position
+                if positions[i] < boundary.min - boundary.max {
+                    positions[i] = boundary.max + (positions[i] % boundary.max);
+                // Don't reflect, just move to the other side
+                } else {
+                    positions[i] = boundary.min + (boundary.min - positions[i]); // Reflect: x = 2 * min - x
+                    velocities[i] = -velocities[i]; // Reflect: v = -v
+                }
             } else if positions[i] > boundary.max {
-                positions[i] = boundary.max + (boundary.max - positions[i]); // Reflect: x = 2 * max - x
-                velocities[i] = -velocities[i]; // Reflect: v = -v
+                // For double tunneling or more, we take the modulus of the position
+                if positions[i] > boundary.max + boundary.max {
+                    positions[i] = boundary.min + (positions[i] % boundary.max);
+                // Don't reflect, just move to the other side
+                } else {
+                    positions[i] = boundary.max + (boundary.max - positions[i]); // Reflect: x = 2 * max - x
+                    velocities[i] = -velocities[i]; // Reflect: v = -v
+                }
             }
         }
     }
