@@ -2,5 +2,6 @@
 .DS_Store
 /rendered_results
 /results
-output.mp4
+final.mp4
+output.gif
 flamegraph.svg

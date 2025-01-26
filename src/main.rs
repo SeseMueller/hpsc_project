@@ -38,7 +38,7 @@ const BIG_SLOW_SIM: (usize, f64, usize) = (40, 1.0, 40); // This is possible, bu
 #[allow(dead_code)]
 const HUGE_SIM: (usize, f64, usize) = (40, 1.5, 60);
 
-const SELECTED_SIM: (usize, f64, usize) = HUGE_SIM;
+const SELECTED_SIM: (usize, f64, usize) = BIG_SIM;
 
 /// Runs a simple simulation using the SoA container.
 /// Saves the results to CSV files for visualization.
@@ -84,8 +84,8 @@ fn run_soa_simulation() {
 fn run_linked_cell_simulation() {
     const LOG_TIMESTEPS: usize = 50; // Log every 50 timesteps
     const REDIST_FREQ: usize = 100; // Redistribute particles every 100 timesteps
-    const ITERATIONS: usize = 5000; // Number of iterations to run
-    const DELTA_T: f64 = 0.0002; // Timestep
+    const ITERATIONS: usize = 50000; // Number of iterations to run
+    const DELTA_T: f64 = 0.00005; // Timestep
 
     const TOTAL_SIZE: usize = SELECTED_SIM.0; // Total "size" of the simulation: number of cells in each dimension
     const CUTOFF: f64 = SELECTED_SIM.1; // Size of the container cells
